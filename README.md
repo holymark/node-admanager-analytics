@@ -1,4 +1,4 @@
-# Node AdSense & Ad Manager Tracker
+#  Ad Manager Report Tool
 
 A lightweight analytics tool for tracking Google Ad Manager and AdSense earnings using OAuth login. Users can authenticate, input their Ad Manager network code, and fetch weekly reports on impressions and clicks.
 
