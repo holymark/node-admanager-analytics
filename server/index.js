@@ -29,8 +29,8 @@ app.get("/auth", (req, res) => {
     access_type: "offline",
     scope: [
       "https://www.googleapis.com/auth/dfp",
-      "https://www.googleapis.com/auth/admanager.readonly",
       "https://www.googleapis.com/auth/analytics.readonly",
+      // "https://www.googleapis.com/auth/admanager.readonly", invalid scope
     ]
   });
   res.json({ url: authUrl });
@@ -57,8 +57,8 @@ app.get("/report", async (req, res) => {
     return res.status(400).json({ error: "Missing networkCode" });
   }
 
-  // Serve mock data for testing
-  if (networkCode === "mock") {
+  // Serve mock data for testing (hardcoded code, just a dummyproof)
+  if (networkCode === "21808260008") {
     return res.json({
       reportJob: {
         id: 123456,
