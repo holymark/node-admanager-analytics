@@ -15,6 +15,7 @@ console.log(
   process.env.CLIENT_SECRET,
   process.env.REDIRECT_URI
 )
+
 // Google OAuth setup
 const oauth2Client = new google.auth.OAuth2(
   process.env.CLIENT_ID,
@@ -26,7 +27,11 @@ const oauth2Client = new google.auth.OAuth2(
 app.get("/auth", (req, res) => {
   const authUrl = oauth2Client.generateAuthUrl({
     access_type: "offline",
-    scope: ["https://www.googleapis.com/auth/dfp"]
+    scope: [
+      "https://www.googleapis.com/auth/dfp",
+      "https://www.googleapis.com/auth/admanager.readonly",
+      "https://www.googleapis.com/auth/analytics.readonly",
+    ]
   });
   res.json({ url: authUrl });
 });
@@ -48,8 +53,29 @@ app.get("/oauth2callback", async (req, res) => {
 // Report fetch
 app.get("/report", async (req, res) => {
   const { token, networkCode } = req.query;
-  if (!token || !networkCode) {
-    return res.status(400).json({ error: "Missing token or networkCode" });
+  if (!networkCode) {
+    return res.status(400).json({ error: "Missing networkCode" });
+  }
+
+  // Serve mock data for testing
+  if (networkCode === "mock") {
+    return res.json({
+      reportJob: {
+        id: 123456,
+        status: "COMPLETED"
+      },
+      reportData: [
+        { date: "2025-06-10", impressions: 1500, clicks: 65, earnings: "$10.23" },
+        { date: "2025-06-11", impressions: 1750, clicks: 72, earnings: "$12.47" },
+        { date: "2025-06-12", impressions: 1600, clicks: 68, earnings: "$11.34" },
+        { date: "2025-06-13", impressions: 1900, clicks: 90, earnings: "$13.56" },
+        { date: "2025-06-14", impressions: 2100, clicks: 95, earnings: "$15.78" },
+      ]
+    });
+  }
+
+  if (!token) {
+    return res.status(400).json({ error: "Missing token" });
   }
 
   const auth = new google.auth.OAuth2();
