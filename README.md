@@ -1,6 +1,6 @@
 #  Ad Manager Report Tool
 
-A lightweight analytics tool for tracking Google Ad Manager and AdSense earnings using OAuth login. Users can authenticate, input their Ad Manager network code, and fetch weekly reports on impressions and clicks.
+A lightweight analytics tool for tracking Google Ad Manager earnings using OAuth login. Users can authenticate, input their Ad Manager network code, and fetch weekly reports on impressions and clicks.
 
 ---
 
@@ -49,14 +49,6 @@ Server will run at: `http://localhost:8080`
 - `https://www.googleapis.com/auth/analytics.readonly` – (Reserved for future analytics integration)
 
 ---
-
-## 🧪 Mock Report Testing
-
-To simulate report output without actual API calls, input:
-
-```
-mock
-```
 
 into the network code field on the frontend. Mock data is returned from the backend.
 
