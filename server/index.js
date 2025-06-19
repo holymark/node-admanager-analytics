@@ -30,7 +30,7 @@ app.get("/auth", (req, res) => {
     prompt: "consent",
     scope: [
       "https://www.googleapis.com/auth/dfp",
-      "https://www.googleapis.com/auth/analytics.readonly",
+      // "https://www.googleapis.com/auth/analytics.readonly", removed this to avoid unverified screen
       // "https://www.googleapis.com/auth/admanager.readonly", invalid scope
     ]
   });
