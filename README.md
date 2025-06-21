@@ -64,6 +64,8 @@ The tool fetches the following metrics for the past week:
 - **Date**
 - **Ad Server Impressions**
 - **Ad Server Clicks**
+- **Ad Server CTR**
+- **Ad Server CPM and CPC Revenue**
 
 
 
