@@ -1,30 +1,37 @@
-#  Ad Manager Report Tool
+# Ad Manager Report Tool
 
-A lightweight analytics tool for tracking Google Ad Manager earnings using OAuth login. Users can authenticate, input their Ad Manager network code, and fetch weekly reports on impressions and clicks.
+A simple Node.js + TypeScript application that fetches performance reports from the **Google Ad Manager (GAM)** API using the **SOAP** interface. It supports Google OAuth2 login for authentication and demonstrates how to retrieve basic report data (impressions, clicks, etc.) from the Ad Manager network.
 
----
+## Features
 
-## 🔧 Features
+- Google OAuth2 authentication
+- Fetches Ad Manager report via SOAP
+- Supports mock data for testing without a real account
+- TypeScript support
+- Deployed and ready for preview
 
-- ✅ Google OAuth2 login
-- ✅ Ad Manager report generation (impressions & clicks)
-- ✅ Multi-Customer Network (MCN) support
-- ✅ Loading states for improved UX
-- ✅ Mock data mode for testing (enter `mock` as network code)
-- ✅ Mobile-friendly, Tailwind-powered UI
+##  Live Demo
 
----
+🔗 [Visit the live app](https://node-admanager-analytics.onrender.com)
 
-## 🚀 Usage
+ [Preview video](#) *(Replace with actual link)*
 
-### 1. Setup
+##  Tech Stack
 
-Create a `.env` file in the root:
+- Node.js + Express
+- TypeScript
+- Google APIs (`googleapis`)
+- SOAP (via `soap` package)
+- OAuth2 authentication
+- Render (for deployment) 
+
+##  Getting Started
+
+### 1. Clone the Repo
 
 ```bash
-CLIENT_ID=your_google_client_id
-CLIENT_SECRET=your_google_client_secret
-REDIRECT_URI=http://localhost:8080/oauth2callback
+git clone https://github.com/holymark/node-admanager-analytics.git
+cd node-admanager-analytics
 ```
 
 ### 2. Install Dependencies
@@ -33,47 +40,32 @@ REDIRECT_URI=http://localhost:8080/oauth2callback
 npm install
 ```
 
-### 3. Start Server
+### 3. Environment Variables
 
-```bash
-npm start
+Create a `.env` file with the following:
+
+```env
+CLIENT_ID=your-google-client-id
+CLIENT_SECRET=your-google-client-secret
+REDIRECT_URI=http://localhost:8080/oauth2callback
 ```
 
-Server will run at: `http://localhost:8080`
+### 4. Run the Server
 
----
+```bash
+npm run dev
+```
 
-## 🌐 OAuth Scopes Used
+Server runs on [http://localhost:8080](http://localhost:8080)
 
-- `https://www.googleapis.com/auth/dfp` – Access Ad Manager API
-- `https://www.googleapis.com/auth/analytics.readonly` – (Reserved for future analytics integration)
+## Report Output
 
----
+The tool fetches the following metrics for the past week:
 
-into the network code field on the frontend. Mock data is returned from the backend.
+- **Date**
+- **Ad Server Impressions**
+- **Ad Server Clicks**
 
----
 
-## 📦 Deploy
 
-Can be deployed to services like Vercel, Render, or Cloud Workstations.
-
----
-
-## ✅ MCN Support
-
-If your account is part of an MCN (Multi-Customer Network), just input the appropriate `networkCode` and your earnings will be tracked separately.
-
----
-
-## 💡 Todo
-
-- [ ] Daily report filters
-- [ ] AdSense integration
-- [ ] Save reports per user
-
----
-
-## 📄 License
-
-MIT
+[MIT](LICENSE)

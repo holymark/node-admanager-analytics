@@ -1,71 +1,101 @@
 <!DOCTYPE html>
 <html lang="en" class="bg-gray-100 text-gray-800">
 <head>
-  <meta charset="UTF-8">
-  <title>Ad Manager Analytics</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+    <meta charset="UTF-8">
+    <title>Ad Manager Analytics</title>
+    <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="flex items-center justify-center min-h-screen p-4">
-  <div class="max-w-xl w-full bg-white rounded-2xl shadow-lg p-6 space-y-4">
-    <h1 class="text-2xl font-bold text-center">Ad Manager Report Tool</h1>
+    <div class="max-w-xl w-full bg-white rounded-2xl shadow-lg p-6 space-y-4">
+        <h1 class="text-2xl font-bold text-center">Ad Manager Report Tool</h1>
 
-    <div id="login-section">
-      <button onclick="login()" class="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg">
-        Login with Google
-      </button>
+        <div id="login-section">
+            <button onclick="login()" class="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg">
+                Login with Google
+            </button>
+        </div>
+
+        <div id="main-section" class="hidden space-y-4">
+            <p class="text-sm text-green-700 font-semibold">Logged in! Paste your Ad Manager <code>networkCode</code> to fetch report:</p>
+            <p class="text-xs text-gray-500">
+                (Find your network code in Ad Manager URL, e.g., <code>admanager.google.com/YOUR_CODE</code>)
+            </p>
+
+            <input id="networkCode" type="text" placeholder="e.g., 123456789" class="w-full border px-4 py-2 rounded" />
+
+            <button onclick="fetchReport()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg w-full">
+                Fetch Report
+            </button>
+            <div id="loading" class="hidden text-blue-600 text-sm">Fetching report...</div>
+            <div id="output" class="text-sm mt-4"></div>
+        </div>
     </div>
 
-    <div id="main-section" class="hidden space-y-4">
-      <p class="text-sm text-green-700 font-semibold">Logged in! Paste your Ad Manager <code>networkCode</code> to fetch report:</p>
+    <script>
+        let access_token = new URLSearchParams(window.location.search).get('access_token');
 
-      <input id="networkCode" type="password" placeholder="e.g., 123456789" class="w-full border px-4 py-2 rounded" />
+        if (access_token) {
+            document.getElementById("login-section").style.display = "none";
+            document.getElementById("main-section").style.display = "block";
+        }
 
-      <button onclick="fetchReport()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg w-full">
-        Fetch Report
-      </button>
-      <div id="loading" class="hidden text-blue-600 text-sm">Fetching report...</div>
-      <div id="output" class="text-sm mt-4"></div>
-    </div>
-  </div>
+        async function login() {
+            try {
+                const res = await fetch("/auth");
+                const data = await res.json();
+                if (data.url) {
+                    window.location.href = data.url;
+                } else {
+                    document.getElementById("output").innerText = "❌ No authentication URL received.";
+                }
+            } catch (err) {
+                console.error("Login initiation failed:", err);
+                document.getElementById("output").innerText = "❌ Failed to initiate Google login.";
+            }
+        }
 
-  <script>
-    let access_token = new URLSearchParams(window.location.search).get('access_token');
+        async function fetchReport() {
+            const networkCode = document.getElementById("networkCode").value;
+            const output = document.getElementById("output");
+            const loading = document.getElementById("loading");
 
-    if (access_token) {
-      document.getElementById("login-section").style.display = "none";
-      document.getElementById("main-section").style.display = "block";
-    }
+            output.innerHTML = ""; // Clear previous output
+            loading.classList.remove("hidden"); // Show loading indicator
 
-    async function login() {
-      const res = await fetch("/auth");
-      const data = await res.json();
-      window.location.href = data.url;
-    }
+            if (!networkCode) {
+                loading.classList.add("hidden");
+                return (output.innerText = "❌ Please enter your Ad Manager networkCode.");
+            }
 
-    async function fetchReport() {
-      const networkCode = document.getElementById("networkCode").value;
-      const output = document.getElementById("output");
-      const loading = document.getElementById("loading");
+            if (!access_token) {
+                loading.classList.add("hidden");
+                return (output.innerText = "❌ Access token not found. Please log in again.");
+            }
 
-      output.innerHTML = "";
-      loading.classList.remove("hidden");
+            try {
+                const res = await fetch(`/report?token=${access_token}&networkCode=${networkCode}`);
+                const data = await res.json();
+                loading.classList.add("hidden"); // Hide loading indicator
 
-      if (!networkCode) {
-        loading.classList.add("hidden");
-        return (output.innerText = "❌ Please enter a networkCode.");
-      }
-
-      try {
-        const res = await fetch(`/report?token=${access_token}&networkCode=${networkCode}`);
-        const data = await res.json();
-        loading.classList.add("hidden");
-
-        output.innerHTML = `<pre class="bg-gray-100 p-2 rounded overflow-x-auto">${JSON.stringify(data, null, 2)}</pre>`;
-      } catch (err) {
-        loading.classList.add("hidden");
-        output.innerHTML = "❌ Failed to fetch report.";
-      }
-    }
-  </script>
+                if (res.ok) { // Check if the response status is 2xx
+                    output.innerHTML = `<pre class="bg-gray-100 p-2 rounded overflow-x-auto">${JSON.stringify(data, null, 2)}</pre>`;
+                } else {
+                    // Server returned an error (e.g., 400, 500)
+                    const errorMessage = data.error || "An unknown error occurred.";
+                    output.innerHTML = `<p class="text-red-600">❌ Error: ${errorMessage}</p>`;
+                    if (data.details) {
+                        output.innerHTML += `<p class="text-red-600 text-xs">Details: ${JSON.stringify(data.details, null, 2)}</p>`;
+                    }
+                    if (data.responseData) {
+                        output.innerHTML += `<p class="text-red-600 text-xs">Response Data: ${JSON.stringify(data.responseData, null, 2)}</p>`;
+                    }
+                }
+            } catch (err) {
+                loading.classList.add("hidden"); // Hide loading indicator
+                console.error("Fetch report client-side error:", err);
+                output.innerHTML = "❌ Failed to fetch report. Network error or server unreachable.";
+            }
+        }
+    </script>
 </body>
 </html>
