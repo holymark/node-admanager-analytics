@@ -14,7 +14,6 @@ A simple Node.js + TypeScript application that fetches performance reports from 
 
 🔗 [Visit the live app](https://node-admanager-analytics.onrender.com)
 
- [Preview video](#) *(Replace with actual link)*
 
 ##  Tech Stack
 
