@@ -47,6 +47,8 @@ Create a `.env` file with the following:
 CLIENT_ID=your-google-client-id
 CLIENT_SECRET=your-google-client-secret
 REDIRECT_URI=http://localhost:8080/oauth2callback
+JWT_SECRET=jwt-secrete 
+
 ```
 
 ### 4. Run the Server
