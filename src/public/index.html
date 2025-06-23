@@ -1,101 +1,144 @@
 <!DOCTYPE html>
-<html lang="en" class="bg-gray-100 text-gray-800">
-<head>
-    <meta charset="UTF-8">
-    <title>Ad Manager Analytics</title>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>AdManager MCN Tool</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="flex items-center justify-center min-h-screen p-4">
-    <div class="max-w-xl w-full bg-white rounded-2xl shadow-lg p-6 space-y-4">
-        <h1 class="text-2xl font-bold text-center">Ad Manager Report Tool</h1>
-
-        <div id="login-section">
-            <button onclick="login()" class="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg">
-                Login with Google
-            </button>
+  </head>
+  <body class="bg-gray-50 text-gray-800 font-sans">
+    <div class="min-h-screen flex items-center justify-center px-4">
+      <div class="max-w-2xl w-full">
+        <!-- Login Section -->
+        <div id="login-section" class="text-center py-12 bg-white shadow rounded">
+          <h1 class="text-3xl font-bold mb-4">Welcome to AdManager MCN Tool</h1>
+          <p class="mb-6 text-gray-600">Please login with Google to get started</p>
+          <button
+            onclick="login()"
+            class="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+          >
+            Sign in with Google
+          </button>
         </div>
 
-        <div id="main-section" class="hidden space-y-4">
-            <p class="text-sm text-green-700 font-semibold">Logged in! Paste your Ad Manager <code>networkCode</code> to fetch report:</p>
-            <p class="text-xs text-gray-500">
-                (Find your network code in Ad Manager URL, e.g., <code>admanager.google.com/YOUR_CODE</code>)
-            </p>
+        <!-- Main Section -->
+        <div
+          id="main-section"
+          class="hidden bg-white shadow rounded mt-6 p-6 space-y-6"
+        >
+          <!-- User Info -->
+          <div id="user-info" class="flex items-center space-x-4">
+            <!-- Filled dynamically -->
+          </div>
 
-            <input id="networkCode" type="text" placeholder="e.g., 123456789" class="w-full border px-4 py-2 rounded" />
+          <!-- Network code input -->
+          <div class="space-y-2">
+            <label for="networkCode" class="block text-sm font-medium text-gray-700"
+              >Your Google AdManager Network Code</label
+            >
+            <input
+              type="text"
+              id="networkCode"
+              placeholder="e.g., 12345678"
+              class="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring focus:border-blue-500"
+            />
+          </div>
 
-            <button onclick="fetchReport()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg w-full">
-                Fetch Report
+          <!-- Fetch Reports Button -->
+          <div>
+            <button
+              onclick="fetchReports()"
+              class="w-full px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition"
+            >
+              Fetch Report
             </button>
-            <div id="loading" class="hidden text-blue-600 text-sm">Fetching report...</div>
-            <div id="output" class="text-sm mt-4"></div>
+          </div>
+
+          <!-- Report Output -->
+          <div id="report" class="overflow-x-auto"></div>
         </div>
+      </div>
     </div>
 
     <script>
-        let access_token = new URLSearchParams(window.location.search).get('access_token');
+      async function login() {
+        const res = await fetch("/auth");
+        const { url } = await res.json();
+        window.location.href = url;
+      }
 
-        if (access_token) {
-            document.getElementById("login-section").style.display = "none";
-            document.getElementById("main-section").style.display = "block";
+      function renderTable(data) {
+        const tableHeaders = Object.keys(data[0]);
+        const headerRow = tableHeaders.map((h) => `<th class="p-2 border">${h}</th>`).join("");
+        const rows = data
+          .map(
+            (row) =>
+              "<tr>" +
+              tableHeaders
+                .map((h) => `<td class="p-2 border text-sm">${row[h]}</td>`)
+                .join("") +
+              "</tr>"
+          )
+          .join("");
+
+        document.getElementById("report").innerHTML = `
+          <table class="min-w-full border mt-6 text-left text-sm text-gray-600">
+            <thead class="bg-gray-100 font-semibold">${headerRow}</thead>
+            <tbody>${rows}</tbody>
+          </table>
+        `;
+      }
+
+      async function fetchReports() {
+        const networkCode = document.getElementById("networkCode").value;
+        const params = new URLSearchParams(window.location.search);
+        const jwt = params.get("jwt");
+
+        if (!networkCode || !jwt) {
+          alert("Missing network code or session. Please login again or enter a network code.");
+          return;
         }
 
-        async function login() {
-            try {
-                const res = await fetch("/auth");
-                const data = await res.json();
-                if (data.url) {
-                    window.location.href = data.url;
-                } else {
-                    document.getElementById("output").innerText = "❌ No authentication URL received.";
-                }
-            } catch (err) {
-                console.error("Login initiation failed:", err);
-                document.getElementById("output").innerText = "❌ Failed to initiate Google login.";
-            }
+        try {
+          const res = await fetch(`/report?networkCode=${networkCode}`, {
+            headers: {
+              Authorization: `Bearer ${jwt}`,
+            },
+          });
+          const data = await res.json();
+          if (data.reportTable) {
+            renderTable(data.reportTable);
+          } else {
+            alert(data.error || "No data found.");
+          }
+        } catch (err) {
+          console.error(err);
+          alert("Failed to fetch report.");
         }
+      }
 
-        async function fetchReport() {
-            const networkCode = document.getElementById("networkCode").value;
-            const output = document.getElementById("output");
-            const loading = document.getElementById("loading");
+      // Auto init if logged in
+      window.addEventListener("DOMContentLoaded", () => {
+        const params = new URLSearchParams(window.location.search);
+        const name = params.get("name");
+        const email = params.get("email");
+        const picture = params.get("picture");
+        const jwt = params.get("jwt");
 
-            output.innerHTML = ""; // Clear previous output
-            loading.classList.remove("hidden"); // Show loading indicator
+        if (name && email && picture && jwt) {
+          document.getElementById("login-section").classList.add("hidden");
+          document.getElementById("main-section").classList.remove("hidden");
 
-            if (!networkCode) {
-                loading.classList.add("hidden");
-                return (output.innerText = "❌ Please enter your Ad Manager networkCode.");
-            }
-
-            if (!access_token) {
-                loading.classList.add("hidden");
-                return (output.innerText = "❌ Access token not found. Please log in again.");
-            }
-
-            try {
-                const res = await fetch(`/report?token=${access_token}&networkCode=${networkCode}`);
-                const data = await res.json();
-                loading.classList.add("hidden"); // Hide loading indicator
-
-                if (res.ok) { // Check if the response status is 2xx
-                    output.innerHTML = `<pre class="bg-gray-100 p-2 rounded overflow-x-auto">${JSON.stringify(data, null, 2)}</pre>`;
-                } else {
-                    // Server returned an error (e.g., 400, 500)
-                    const errorMessage = data.error || "An unknown error occurred.";
-                    output.innerHTML = `<p class="text-red-600">❌ Error: ${errorMessage}</p>`;
-                    if (data.details) {
-                        output.innerHTML += `<p class="text-red-600 text-xs">Details: ${JSON.stringify(data.details, null, 2)}</p>`;
-                    }
-                    if (data.responseData) {
-                        output.innerHTML += `<p class="text-red-600 text-xs">Response Data: ${JSON.stringify(data.responseData, null, 2)}</p>`;
-                    }
-                }
-            } catch (err) {
-                loading.classList.add("hidden"); // Hide loading indicator
-                console.error("Fetch report client-side error:", err);
-                output.innerHTML = "❌ Failed to fetch report. Network error or server unreachable.";
-            }
+          // Populate user info
+          document.getElementById("user-info").innerHTML = `
+            <img src="${picture}" class="w-12 h-12 rounded-full border" alt="User Avatar" />
+            <div>
+              <p class="font-medium">${name}</p>
+              <p class="text-sm text-gray-500">${email}</p>
+            </div>
+          `;
         }
+      });
     </script>
-</body>
+  </body>
 </html>

@@ -1,74 +1,177 @@
-import express, { Request, Response } from "express";
+import express, { Request, Response, NextFunction, Express } from "express";
 import dotenv from "dotenv";
 import path from "path";
-import { createClient, Client } from 'soap';
-import cors from "cors";
-import { google } from "googleapis";
+import cors, { CorsOptions } from "cors";
+import jwt, { VerifyErrors, JwtPayload, VerifyCallback } from "jsonwebtoken";
+import cookieParser from "cookie-parser";
+import { google, Auth } from "googleapis";
+import { createClient, Client } from "soap";
 import util from "util";
-import axios from "axios";
+import axios, { AxiosResponse } from "axios";
+
+// In-memory store as a placeholder
+const tokenStore: Map<string, string> = new Map();
 
 dotenv.config();
-const app = express();
-const PORT = process.env.PORT || 8080;
 
-app.use(cors());
+const app: Express = express();
+const PORT: number = parseInt(process.env.PORT || "8080", 10);
+const JWT_SECRET: string = process.env.JWT_SECRET || "dev_secret"; // Ensure this is set
+
+const corsOptions: CorsOptions = {
+  origin: process.env.CORS_ORIGIN ? [process.env.CORS_ORIGIN] : ["http://localhost:8080"],
+  credentials: true,
+};
+app.use(cors(corsOptions));
 app.use(express.static(path.join(__dirname, "public")));
 app.use(express.json());
+app.use(cookieParser());
 
-const WSDL_URL = "https://ads.google.com/apis/ads/publisher/v202505/ReportService?wsdl";
+// OAuth2 Client Configuration
+const oauth2Client: Auth.OAuth2Client = new google.auth.OAuth2(
+  process.env.CLIENT_ID || "",
+  process.env.CLIENT_SECRET || "",
+  process.env.REDIRECT_URI || "http://localhost:8080/oauth2callback"
+);
 
-function getSoapHeader(networkCode: string, accessToken: string) {
+const WSDL_URL: string = "https://ads.google.com/apis/ads/publisher/v202505/ReportService?wsdl";
+
+// SOAP Header Function
+interface SoapHeader {
+  "ns1:RequestHeader": {
+    "ns1:networkCode": string;
+    "ns1:applicationName": string;
+    "ns1:authentication": {
+      "ns1:oauth2Token": string;
+    };
+  };
+}
+
+function getSoapHeader(networkCode: string, accessToken: string): SoapHeader {
   return {
-    RequestHeader: {
-      networkCode: networkCode,
-      applicationName: "Ad Manager Tracking Tool",
-      authentication: {
-        oauth2Token: accessToken,
+    "ns1:RequestHeader": {
+      "ns1:networkCode": networkCode,
+      "ns1:applicationName": "Ad Manager Tracking Tool",
+      "ns1:authentication": {
+        "ns1:oauth2Token": accessToken,
       },
     },
   };
 }
 
-app.get("/auth", (req: Request, res: Response) => {
-  const oauth2Client = new google.auth.OAuth2(
-    process.env.CLIENT_ID,
-    process.env.CLIENT_SECRET,
-    process.env.REDIRECT_URI
-  );
+// Middleware to verify JWT
+interface CustomRequest extends Request {
+  body: {
+    userId?: string;
+  };
+}
 
-  const authUrl = oauth2Client.generateAuthUrl({
-    access_type: "offline",
-    scope: ["https://www.googleapis.com/auth/dfp"],
+const authenticateToken = (
+  req: CustomRequest,
+  res: Response,
+  next: NextFunction
+): void => {
+  // Initialize req.body if undefined
+  req.body = req.body || {};
+
+  const token: string | undefined = req.headers["authorization"]?.split(" ")[1] || req.cookies.jwt;
+  if (!token) {
+    res.status(401).json({ error: "No token provided" });
+    return;
+  }
+
+  console.log("Verifying token:", token.substring(0, 10) + "..."); // Log token prefix for debugging
+  jwt.verify(token, JWT_SECRET, (err: VerifyErrors | null, decoded: string | JwtPayload | undefined) => {
+    if (err) {
+      console.error("JWT Verification Error:", err.message);
+      res.status(403).json({ error: "Invalid token" });
+      return;
+    }
+    if (typeof decoded === "undefined") {
+      console.error("Decoded token is undefined after verification");
+      res.status(403).json({ error: "Invalid token payload" });
+      return;
+    }
+    const userId = typeof decoded === "string" ? decoded : decoded?.userId;
+    if (!userId) {
+      console.error("No userId found in decoded token");
+      res.status(403).json({ error: "Token lacks userId" });
+      return;
+    }
+    req.body.userId = userId;
+    next();
   });
+};
 
+// Authentication Route
+app.get("/auth", (req: Request, res: Response) => {
+  const authUrl: string = oauth2Client.generateAuthUrl({
+    access_type: "offline",
+    scope: ["https://www.googleapis.com/auth/admanager", "profile", "email"],
+    prompt: "consent",
+    state: req.query.state as string | undefined || "state",
+  });
   res.json({ url: authUrl });
 });
 
-app.get("/oauth2callback", async (req: Request, res: Response) => {
-  const { code } = req.query;
+// OAuth2 Callback Route
+interface OAuthTokens extends Auth.Credentials {
+  expiry_date?: number;
+}
 
-  const oauth2Client = new google.auth.OAuth2(
-    process.env.CLIENT_ID,
-    process.env.CLIENT_SECRET,
-    process.env.REDIRECT_URI
-  );
+app.get("/oauth2callback", async (req: Request, res: Response) => {
+  const { code, state } = req.query as { code?: string; state?: string };
+  if (!code) {
+    res.status(400).json({ error: "Authorization code missing" });
+    return;
+  }
 
   try {
-    const { tokens } = await oauth2Client.getToken(code as string);
+    const { tokens }: { tokens: Auth.Credentials } = await oauth2Client.getToken(code);
+    console.log({ tokens });
+    if (!tokens.access_token || !tokens.refresh_token) {
+      res.status(400).json({ error: "Missing access token or refresh token" });
+      return;
+    }
+
+    // Set credentials immediately after obtaining tokens
     oauth2Client.setCredentials(tokens);
 
-    res.redirect(`/?access_token=${tokens.access_token}`);
-  } catch (err) {
+    // Store refresh_token securely in memory
+    const userId: string = `user_${Date.now()}`;
+    tokenStore.set(userId, tokens.refresh_token);
+
+    const jwtToken: string = jwt.sign({ userId }, JWT_SECRET, { expiresIn: "7d" });
+
+    const oauth2 = google.oauth2({ auth: oauth2Client, version: "v2" });
+    const { data: userinfo } = await oauth2.userinfo.get();
+
+    res.cookie("jwt", jwtToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+    });
+    // Pass JWT in URL for client to use
+    res.redirect(
+      `http://localhost:8080?name=${encodeURIComponent(userinfo.name || "")}&email=${userinfo.email}&picture=${encodeURIComponent(
+        userinfo.picture || ""
+      )}&jwt=${encodeURIComponent(jwtToken)}`
+    );
+  } catch (err: any) {
     console.error("OAuth2 error:", err);
-    res.status(500).send("Authentication failed");
+    res.status(500).json({ error: "Authentication failed", details: err.message });
   }
 });
 
-function delay(ms: number) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+// Delay Function
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-type SoapCallback = (err: any, result: any, rawResponse: any, soapHeader: any, rawRequest: any) => void;
+// SOAP Client Types
+interface SoapCallback {
+  (err: any, result: any, rawResponse: any, soapHeader: any, rawRequest: any): void;
+}
 
 interface GamReportServiceClient extends Client {
   runReportJob: (args: any, callback: SoapCallback) => void;
@@ -76,33 +179,46 @@ interface GamReportServiceClient extends Client {
   getReportDownloadURL: (args: any, callback: SoapCallback) => void;
 }
 
+// Report Route
+app.get("/report", authenticateToken, async (req: CustomRequest, res: Response) => {
+  const networkCode: string | undefined = req.query.networkCode as string | undefined;
+  const userId: string | undefined = req.body.userId;
 
-app.get("/report", async (req: Request, res: Response) : Promise<any> => {
-  const { token, networkCode } = req.query;
-  if (!token || !networkCode) {
-    return res.status(400).json({ error: "Missing token or networkCode" });
+  if (!networkCode || !userId) {
+    res.status(400).json({ error: "Missing required parameters" });
+    return;
   }
 
-
   try {
-    // await new Promise(resolve => setTimeout(resolve, 100));
+    // Retrieve refresh_token from secure storage
+    const refresh_token: string | undefined = tokenStore.get(userId);
+    if (!refresh_token) {
+      res.status(401).json({ error: "No refresh token found for user" });
+      return;
+    }
+
+    oauth2Client.setCredentials({ refresh_token });
+    const { credentials } = await oauth2Client.refreshAccessToken();
+    const accessToken: string = credentials.access_token ?? "";
+    if (!accessToken) {
+      res.status(401).json({ error: "Failed to obtain valid access token" });
+      return;
+    }
 
     const createClientAsync = util.promisify(createClient);
     const client = await createClientAsync(WSDL_URL);
-
     const gamClient = client as GamReportServiceClient;
 
-
-    const runReportJobAsync = util.promisify(gamClient.runReportJob).bind(gamClient);
-    const getReportJobStatusAsync = util.promisify(gamClient.getReportJobStatus).bind(gamClient);
-    const getReportDownloadURLAsync = util.promisify(gamClient.getReportDownloadURL).bind(gamClient);
-
     gamClient.addSoapHeader(
-      getSoapHeader(networkCode as string, token as string),
+      getSoapHeader(networkCode, accessToken),
       "",
       "ns1",
       "https://www.google.com/apis/ads/publisher/v202505"
     );
+
+    const runReportJobAsync = util.promisify(gamClient.runReportJob).bind(gamClient);
+    const getReportJobStatusAsync = util.promisify(gamClient.getReportJobStatus).bind(gamClient);
+    const getReportDownloadURLAsync = util.promisify(gamClient.getReportDownloadURL).bind(gamClient);
 
     const reportJobRequest = {
       reportJob: {
@@ -112,74 +228,68 @@ app.get("/report", async (req: Request, res: Response) : Promise<any> => {
             "AD_SERVER_IMPRESSIONS",
             "AD_SERVER_CLICKS",
             "AD_SERVER_CTR",
-            "AD_SERVER_CPM_AND_CPC_REVENUE"
+            "AD_SERVER_CPM_AND_CPC_REVENUE",
           ],
           dateRangeType: "LAST_WEEK",
         },
       },
     };
 
-    console.log("Submitting report job...");
     const initialReportJobResult: any = await runReportJobAsync(reportJobRequest);
-    const jobId = initialReportJobResult.rval.id;
-    console.log(`Report job submitted with ID: ${jobId}`);
+    const jobId: string = initialReportJobResult.rval.id;
 
-    let reportStatus = "IN_PROGRESS";
-    let attempts = 0;
-    const maxAttempts = 30;
-    const pollInterval = 5000;
+    let reportStatus: string = "IN_PROGRESS";
+    let attempts: number = 0;
+    const maxAttempts: number = 30;
+    const pollInterval: number = 5000;
 
     while (reportStatus === "IN_PROGRESS" && attempts < maxAttempts) {
-      console.log(`Polling report job status for ID ${jobId}... (Attempt ${attempts + 1}/${maxAttempts})`);
       await delay(pollInterval);
       const statusResult: any = await getReportJobStatusAsync({ reportJobId: jobId });
-      reportStatus = statusResult.rval;
-      console.log(`Current report status: ${reportStatus}`);
+      reportStatus = statusResult.rval.reportJobStatus;
       attempts++;
     }
 
     if (reportStatus === "COMPLETED") {
-      console.log("Report job completed! Fetching download URL...");
       const downloadURLResult: any = await getReportDownloadURLAsync({
         reportJobId: jobId,
         exportFormat: "TSV",
-
       });
-      const downloadUrl = downloadURLResult.rval;
-      console.log(`Report download URL: ${downloadUrl}`);
+      const downloadUrl: string = downloadURLResult.rval.url;
+      const reportResponse: AxiosResponse<string> = await axios.get(downloadUrl, { responseType: "text" });
+      const reportData: string = reportResponse.data;
 
+      const rows: string[] = reportData.trim().split("\n");
+      const headers: string[] = rows[0].split("\t");
+      const table: Record<string, string>[] = rows.slice(1).map((row: string) => {
+        const values: string[] = row.split("\t");
+        return headers.reduce((acc: Record<string, string>, h: string, i: number) => ({
+          ...acc,
+          [h]: values[i] || "N/A",
+        }), {});
+      });
 
-
-      const reportResponse = await axios.get(downloadUrl, { responseType: 'text' });
-      const reportData = reportResponse.data;
-
-
-
-      return res.json({
-        jobId: jobId,
+      res.json({
+        jobId,
         status: reportStatus,
-        downloadUrl: downloadUrl,
-        reportContent: reportData,
-
-        message: "Report fetched successfully"
+        reportTable: table,
+        message: "Report fetched successfully",
       });
-
     } else if (reportStatus === "FAILED") {
-      console.error(`Report job failed for ID: ${jobId}`);
-      return res.status(500).json({ error: `Report job failed with status: ${reportStatus}` });
+      res.status(500).json({ error: `Report job failed with status: ${reportStatus}` });
     } else {
-      console.error(`Report job timed out for ID: ${jobId}. Final status: ${reportStatus}`);
-      return res.status(504).json({ error: "Report generation timed out." });
+      res.status(504).json({ error: "Report generation timed out" });
     }
-
   } catch (e: any) {
     console.error("Report error:", e);
-    if (e.response && e.response.data) {
-      return res.status(500).json({ error: "SOAP API error", details: e.message, responseData: e.response.data });
-    }
-    return res.status(500).json({ error: e.message });
+    res.status(500).json({ error: e.message });
   }
-  
+});
+
+// Global Error Handler
+app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
+  console.error(err.stack);
+  res.status(500).json({ error: "Something went wrong!" });
 });
 
 app.listen(PORT, () => {
