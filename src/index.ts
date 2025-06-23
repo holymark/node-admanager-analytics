@@ -9,17 +9,16 @@ import { createClient, Client } from "soap";
 import util from "util";
 import axios, { AxiosResponse } from "axios";
 
-// In-memory store as a placeholder
 const tokenStore: Map<string, string> = new Map();
 
 dotenv.config();
 
 const app: Express = express();
 const PORT: number = parseInt(process.env.PORT || "8080", 10);
-const JWT_SECRET: string = process.env.JWT_SECRET || "dev_secret"; // Ensure this is set
+const JWT_SECRET: string = process.env.JWT_SECRET || "dev_secret"; 
 
 const corsOptions: CorsOptions = {
-  origin: process.env.CORS_ORIGIN ? [process.env.CORS_ORIGIN] : ["http://localhost:8080"],
+  origin: process.env.CORS_ORIGIN ? [process.env.CORS_ORIGIN] : [process.env.REDIRECT_URI!.replace("/oauth2callback", "")],
   credentials: true,
 };
 app.use(cors(corsOptions));
@@ -27,16 +26,14 @@ app.use(express.static(path.join(__dirname, "public")));
 app.use(express.json());
 app.use(cookieParser());
 
-// OAuth2 Client Configuration
 const oauth2Client: Auth.OAuth2Client = new google.auth.OAuth2(
   process.env.CLIENT_ID || "",
   process.env.CLIENT_SECRET || "",
-  process.env.REDIRECT_URI || "http://localhost:8080/oauth2callback"
+  process.env.REDIRECT_URI || ""
 );
 
 const WSDL_URL: string = "https://ads.google.com/apis/ads/publisher/v202505/ReportService?wsdl";
 
-// SOAP Header Function
 interface SoapHeader {
   "ns1:RequestHeader": {
     "ns1:networkCode": string;
@@ -59,7 +56,6 @@ function getSoapHeader(networkCode: string, accessToken: string): SoapHeader {
   };
 }
 
-// Middleware to verify JWT
 interface CustomRequest extends Request {
   body: {
     userId?: string;
@@ -71,7 +67,6 @@ const authenticateToken = (
   res: Response,
   next: NextFunction
 ): void => {
-  // Initialize req.body if undefined
   req.body = req.body || {};
 
   const token: string | undefined = req.headers["authorization"]?.split(" ")[1] || req.cookies.jwt;
@@ -80,7 +75,7 @@ const authenticateToken = (
     return;
   }
 
-  console.log("Verifying token:", token.substring(0, 10) + "..."); // Log token prefix for debugging
+  console.log("Verifying token:", token.substring(0, 10) + "..."); 
   jwt.verify(token, JWT_SECRET, (err: VerifyErrors | null, decoded: string | JwtPayload | undefined) => {
     if (err) {
       console.error("JWT Verification Error:", err.message);
@@ -103,7 +98,6 @@ const authenticateToken = (
   });
 };
 
-// Authentication Route
 app.get("/auth", (req: Request, res: Response) => {
   const authUrl: string = oauth2Client.generateAuthUrl({
     access_type: "offline",
@@ -114,7 +108,6 @@ app.get("/auth", (req: Request, res: Response) => {
   res.json({ url: authUrl });
 });
 
-// OAuth2 Callback Route
 interface OAuthTokens extends Auth.Credentials {
   expiry_date?: number;
 }
@@ -134,10 +127,8 @@ app.get("/oauth2callback", async (req: Request, res: Response) => {
       return;
     }
 
-    // Set credentials immediately after obtaining tokens
     oauth2Client.setCredentials(tokens);
 
-    // Store refresh_token securely in memory
     const userId: string = `user_${Date.now()}`;
     tokenStore.set(userId, tokens.refresh_token);
 
@@ -151,9 +142,9 @@ app.get("/oauth2callback", async (req: Request, res: Response) => {
       secure: process.env.NODE_ENV === "production",
       sameSite: "strict",
     });
-    // Pass JWT in URL for client to use
+
     res.redirect(
-      `http://localhost:8080?name=${encodeURIComponent(userinfo.name || "")}&email=${userinfo.email}&picture=${encodeURIComponent(
+      `${process.env.REDIRECT_URI!.replace("/oauth2callback", "")}?name=${encodeURIComponent(userinfo.name || "")}&email=${userinfo.email}&picture=${encodeURIComponent(
         userinfo.picture || ""
       )}&jwt=${encodeURIComponent(jwtToken)}`
     );
@@ -163,12 +154,12 @@ app.get("/oauth2callback", async (req: Request, res: Response) => {
   }
 });
 
-// Delay Function
+
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// SOAP Client Types
+
 interface SoapCallback {
   (err: any, result: any, rawResponse: any, soapHeader: any, rawRequest: any): void;
 }
@@ -179,7 +170,7 @@ interface GamReportServiceClient extends Client {
   getReportDownloadURL: (args: any, callback: SoapCallback) => void;
 }
 
-// Report Route
+
 app.get("/report", authenticateToken, async (req: CustomRequest, res: Response) => {
   const networkCode: string | undefined = req.query.networkCode as string | undefined;
   const userId: string | undefined = req.body.userId;
@@ -190,7 +181,7 @@ app.get("/report", authenticateToken, async (req: CustomRequest, res: Response) 
   }
 
   try {
-    // Retrieve refresh_token from secure storage
+
     const refresh_token: string | undefined = tokenStore.get(userId);
     if (!refresh_token) {
       res.status(401).json({ error: "No refresh token found for user" });
@@ -286,12 +277,13 @@ app.get("/report", authenticateToken, async (req: CustomRequest, res: Response) 
   }
 });
 
-// Global Error Handler
+
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
   console.error(err.stack);
   res.status(500).json({ error: "Something went wrong!" });
 });
 
 app.listen(PORT, () => {
-  console.log(`✅ Server running at http://localhost:${PORT}`);
+  console.log(`Server running at ${process.env.REDIRECT_URI!.replace("/oauth2callback", "")}`);
 });
+

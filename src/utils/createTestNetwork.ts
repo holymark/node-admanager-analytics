@@ -4,7 +4,7 @@ import * as dotenv from "dotenv";
 import { Client, createClientAsync } from "soap";
 import util from "util";
 
-// Load environment variables
+
 dotenv.config({ path: path.join(__dirname, "../../.env") });
 
 interface AdManagerSoapClient extends Client {
@@ -17,7 +17,7 @@ interface Network {
   testNetwork: boolean;
 }
 
-// Define the expected response type
+
 interface MakeTestNetworkResponse {
   rval: Network;
 }
@@ -31,31 +31,31 @@ const oauth2Client: Auth.OAuth2Client = new google.auth.OAuth2(
   process.env.REDIRECT_URI
 );
 
-// Set initial credentials with refresh token
+
 oauth2Client.setCredentials({
   refresh_token: process.env.REFRESH_TOKEN,
 });
 
-// Define scopes for Ad Manager API
+
 const SCOPES = ["https://www.googleapis.com/auth/admanager"];
 
 async function createTestAdManagerNetwork(): Promise<string> {
   try {
-    // Refresh access token with explicit scopes
+
     const { credentials } = await oauth2Client.refreshAccessToken();
     if (!credentials.access_token) throw new Error("Access token missing after refresh");
     oauth2Client.setCredentials(credentials);
     const accessToken = credentials.access_token;
     console.log("Access Token:", accessToken);
 
-    // Create SOAP client and inspect available methods
+
     const client = await createClientAsync(WSDL_URL) as AdManagerSoapClient;
     console.log("Available SOAP Methods:", Object.keys(client));
 
-    // SOAP header with proper namespace
+
     const soapHeader = {
       "ns1:RequestHeader": {
-        "ns1:networkCode": "0", // Default for initial requests
+        "ns1:networkCode": "0", 
         "ns1:applicationName": "Ad Manager Tracking Tool",
         "ns1:authentication": {
           "ns1:oauth2Token": accessToken,
@@ -70,17 +70,14 @@ async function createTestAdManagerNetwork(): Promise<string> {
       `https://www.google.com/apis/ads/publisher/${AD_MANAGER_API_VERSION}`
     );
 
-    // Debugging hooks
-    client.on("request", xml => console.log("🔷 SOAP Request:", xml));
-    client.on("response", xml => console.log("🟢 SOAP Response:", xml));
-    client.on("soapError", err => console.error("❌ SOAP Error:", err));
+    client.on("request", xml => console.log("SOAP Request:", xml));
+    client.on("response", xml => console.log("SOAP Response:", xml));
+    client.on("soapError", err => console.error("SOAP Error:", err));
 
-    // Check if makeTestNetwork is available
     if (!client.makeTestNetwork) {
       throw new Error("makeTestNetwork method not found on SOAP client. Check WSDL compatibility.");
     }
 
-    // Promisify the method with explicit typing
     const makeTestNetworkAsync = util.promisify<
       {},
       [MakeTestNetworkResponse]
@@ -113,7 +110,8 @@ async function createTestAdManagerNetwork(): Promise<string> {
   }
 }
 
-// Run it
+// run to get a valid network code from test network:
+// ts-node src/utils/createTestAdManagerNetwork.ts
 createTestAdManagerNetwork()
   .then(code => {
     console.log(`\n🎯 Use this Test Network Code in your app: ${code}`);

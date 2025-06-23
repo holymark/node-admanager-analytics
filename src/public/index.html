@@ -9,9 +9,8 @@
   <body class="bg-gray-50 text-gray-800 font-sans">
     <div class="min-h-screen flex items-center justify-center px-4">
       <div class="max-w-2xl w-full">
-        <!-- Login Section -->
         <div id="login-section" class="text-center py-12 bg-white shadow rounded">
-          <h1 class="text-3xl font-bold mb-4">Welcome to AdManager MCN Tool</h1>
+          <h1 class="text-3xl font-bold mb-4">AdManager MCN Tool</h1>
           <p class="mb-6 text-gray-600">Please login with Google to get started</p>
           <button
             onclick="login()"
@@ -21,17 +20,13 @@
           </button>
         </div>
 
-        <!-- Main Section -->
         <div
           id="main-section"
           class="hidden bg-white shadow rounded mt-6 p-6 space-y-6"
         >
-          <!-- User Info -->
           <div id="user-info" class="flex items-center space-x-4">
-            <!-- Filled dynamically -->
           </div>
 
-          <!-- Network code input -->
           <div class="space-y-2">
             <label for="networkCode" class="block text-sm font-medium text-gray-700"
               >Your Google AdManager Network Code</label
@@ -44,7 +39,6 @@
             />
           </div>
 
-          <!-- Fetch Reports Button -->
           <div>
             <button
               onclick="fetchReports()"
@@ -54,7 +48,6 @@
             </button>
           </div>
 
-          <!-- Report Output -->
           <div id="report" class="overflow-x-auto"></div>
         </div>
       </div>
@@ -117,7 +110,6 @@
         }
       }
 
-      // Auto init if logged in
       window.addEventListener("DOMContentLoaded", () => {
         const params = new URLSearchParams(window.location.search);
         const name = params.get("name");
